@@ -371,7 +371,11 @@ extension String {
   public func cString(using encoding: Encoding) -> [CChar]? {
     return withExtendedLifetime(_ns) {
       (s: NSString) -> [CChar]? in
-      _persistCString(s.cString(using: encoding.rawValue))
+      //_persistCString(s.cString(using: encoding.rawValue))
+      let cstr = s.cString(using: encoding.rawValue)
+      let pcstr = _persistCString(cstr)
+      free(UnsafeMutableRawPointer(mutating: cstr!))
+      return pcstr
     }
   }
 
