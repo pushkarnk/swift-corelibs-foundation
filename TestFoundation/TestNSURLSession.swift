@@ -34,6 +34,7 @@ class TestURLSession : XCTestCase {
             ("test_taskCopy", test_taskCopy),
             ("test_cancelTask", test_cancelTask),
             ("test_taskTimeout", test_taskTimeout),
+            ("test_verifyRequestHeaders", test_verifyRequestHeaders),
         ]
     }
 
@@ -318,7 +319,36 @@ class TestURLSession : XCTestCase {
         d.cancel()
         waitForExpectations(timeout: 12)
     }
-    
+
+    func test_verifyRequestHeaders() {
+        let serverReady = ServerSemaphore()
+        globalDispatchQueue.async {
+            do {
+                try self.runServer(with: serverReady)
+            } catch {
+                XCTAssertTrue(true)
+                return
+            }
+        }
+        serverReady.wait()
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 5
+        let session = URLSession(configuration: config, delegate: nil, delegateQueue: nil)
+        var expect = expectation(description: "download task with handler")
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(serverPort)/requestHeaders")!)
+        let headers = ["header1": "value1"]
+        req.httpMethod = "POST"
+        req.allHTTPHeaderFields = headers
+        var task = session.dataTask(with: req) { (data, _, error) -> Void in
+            defer { expect.fulfill() }
+            let headers = String(data: data!, encoding: String.Encoding.utf8)!
+            XCTAssertNotNil(headers.range(of: "header1: value1"))
+        }
+        task.resume()
+
+        waitForExpectations(timeout: 30)
+    }
+
     func test_taskTimeout() {
         let serverReady = ServerSemaphore()
         globalDispatchQueue.async {
