@@ -38,6 +38,7 @@ class TestURLSession : XCTestCase {
             ("test_verifyHttpAdditionalHeaders", test_verifyHttpAdditionalHeaders),
             ("test_timeoutInterval", test_timeoutInterval),
 	    ("test_customProtocol", test_customProtocol),
+            ("test_customProtocolResponseWithDelegate", test_customProtocolResponseWithDelegate),
 	    ("test_httpRedirection", test_httpRedirection),
         ]
     }
@@ -468,6 +469,24 @@ class TestURLSession : XCTestCase {
         waitForExpectations(timeout: 12)
     }
 
+    func test_customProtocolResponseWithDelegate() {
+       let serverReady = ServerSemaphore()
+        globalDispatchQueue.async {
+            do {
+                try self.runServer(with: serverReady)
+            } catch {
+                XCTAssertTrue(true)
+                return
+            }
+        }
+        serverReady.wait()
+        let url = URL(string: "http://127.0.0.1:\(serverPort)/Peru")!
+        let d = DataTask(with: expectation(description: "Custom protocol with delegate"), protocolClasses: [CustomProtocol.self])
+        d.responseReceivedExpectation = expectation(description: "A response wasn't received")
+        d.run(with: url)
+        waitForExpectations(timeout: 12)
+    }
+
     func test_httpRedirection() {
         let serverReady = ServerSemaphore()
         globalDispatchQueue.async {
@@ -503,16 +522,21 @@ class DataTask : NSObject {
     var session: URLSession! = nil
     var task: URLSessionDataTask! = nil
     var cancelExpectation: XCTestExpectation?
-
+    var responseReceivedExpectation: XCTestExpectation?
+    var protocols: [AnyClass]?
     public var error = false
 
-    init(with expectation: XCTestExpectation) {
+    init(with expectation: XCTestExpectation, protocolClasses: [AnyClass]? = nil) {
        dataTaskExpectation = expectation
+       protocols = protocolClasses
     }
 
     func run(with request: URLRequest) {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 8
+        if let customProtocols = protocols {
+            config.protocolClasses = customProtocols
+        }
         session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
         task = session.dataTask(with: request)
         task.resume()
@@ -521,6 +545,9 @@ class DataTask : NSObject {
     func run(with url: URL) {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 8
+        if let customProtocols = protocols {
+            config.protocolClasses = customProtocols
+        }
         session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
         task = session.dataTask(with: url)
         task.resume()
@@ -534,6 +561,14 @@ class DataTask : NSObject {
 extension DataTask : URLSessionDataDelegate {
     public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         capital = String(data: data, encoding: String.Encoding.utf8)!
+    }
+   
+    public func urlSession(_ session: URLSession,
+                    dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        guard responseReceivedExpectation != nil else { return }
+        responseReceivedExpectation!.fulfill()
     }
 }
 
