@@ -155,7 +155,7 @@ fileprivate extension _HTTPURLProtocol {
             httpHeaders = hh
         }
 
-        if let hh = self.task?.originalRequest?.allHTTPHeaderFields {
+        if let hh = request.allHTTPHeaderFields {
             if httpHeaders == nil {
                 httpHeaders = hh
             } else {
@@ -653,7 +653,11 @@ internal extension _HTTPURLProtocol {
         guard let url = request.url else { fatalError("No URL in request.") }
 
         self.internalState = .transferReady(createTransferState(url: url, workQueue: t.workQueue))
-        configureEasyHandle(for: request)
+        if let authRequest = task?.authRequest {
+            configureEasyHandle(for: authRequest)
+        } else {
+            configureEasyHandle(for: request)
+        }
         if (t.suspendCount) < 1 {
             resume()
         }
@@ -803,6 +807,8 @@ internal extension _HTTPURLProtocol {
             break
         }
     }
+
+
     /// Give the delegate a chance to tell us how to proceed once we have a
     /// response / complete header.
     ///

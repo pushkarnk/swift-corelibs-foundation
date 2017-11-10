@@ -171,6 +171,8 @@ class _TCPSocket {
 class _HTTPServer {
 
     let socket: _TCPSocket
+    var authenticating = false
+
     var port: UInt16 {
         get {
             return self.socket.port
@@ -215,6 +217,15 @@ class _HTTPServer {
         }
         semaphore.wait()
         
+    } 
+
+    func respondWithAuthResponse(uri: String) throws {
+        let responseData: Data
+        responseData = ("HTTP/1.1 401 Unauthorized \r\n" + 
+                       "WWW-Authenticate: Basic realm=\"Fake\"\r\n" + 
+                       "\r\n" + 
+                       "Need to authenticate!\r\n").data(using: .utf8)!
+        try self.socket.writeRawData(responseData)
     } 
 
     func respondWithBrokenResponses(uri: String) throws {
@@ -293,7 +304,9 @@ struct _HTTPRequest {
     let headers: [String]
 
     public init(request: String) {
+        print(request)
         let lines = request.components(separatedBy: _HTTPUtils.CRLF2)[0].components(separatedBy: _HTTPUtils.CRLF)
+        print(lines.count)
         headers = Array(lines[0...lines.count-2])
         method = Method(rawValue: headers[0].components(separatedBy: " ")[0])!
         uri = headers[0].components(separatedBy: " ")[1]
@@ -364,6 +377,9 @@ public class TestURLSessionServer {
         if req.uri.hasPrefix("/LandOfTheLostCities/") {
             /* these are all misbehaving servers */
             try httpServer.respondWithBrokenResponses(uri: req.uri)
+        } else if req.uri.hasPrefix("/auth") {
+            httpServer.authenticating = true
+            try httpServer.respondWithAuthResponse(uri: req.uri)
         } else {
             try httpServer.respond(with: process(request: req), startDelay: self.startDelay, sendDelay: self.sendDelay, bodyChunks: self.bodyChunks)
         }
@@ -464,6 +480,9 @@ class LoopbackServerTest : XCTestCase {
                 serverPort = Int(test.port)
                 try test.start(started: condition)
                 try test.readAndRespond()
+                if test.httpServer.authenticating {
+                    try test.readAndRespond()
+                }
                 serverPort = -2
                 test.stop()
             }
